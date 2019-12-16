@@ -181,7 +181,8 @@ static inline int write_to_bin_file(bam1_t *bam, int64_t *count, samFile **bin_f
 
 
 static int bamshuf(const char *fn, int n_files, const char *pre, int clevel,
-                   int is_stdout, const char *output_file, int fast, int store_max, sam_global_args *ga)
+                   int is_stdout, const char *output_file, int fast, int store_max, sam_global_args *ga,
+                   int nbchunks, int chunk)
 {
     samFile *fp, *fpw = NULL, **fpt = NULL;
     char **fnt = NULL, modew[8];
@@ -299,7 +300,7 @@ static int bamshuf(const char *fn, int n_files, const char *pre, int clevel,
             goto fast_fail;
         }
 
-        while ((r = sam_read1(fp, h, list.items[list.index].b)) >= 0) {
+        while ((r = sam_read1_chunk(fp, h, list.items[list.index].b), nbchunks, chunk) >= 0) {
             int ret;
             bam1_t *b = list.items[list.index].b;
             int readflag = b->core.flag & (BAM_FREAD1 | BAM_FREAD2);
@@ -412,7 +413,7 @@ static int bamshuf(const char *fn, int n_files, const char *pre, int clevel,
         b = bam_init1();
         if (!b) goto mem_fail;
 
-        while ((r = sam_read1(fp, h, b)) >= 0) {
+        while ((r = sam_read1_chunk(fp, h, b, nbchunks, chunk)) >= 0) {
             if (write_to_bin_file(b, cnt, fpt, fnt, h, n_files)) {
                 bam_destroy1(b);
                 goto fail;
@@ -463,7 +464,7 @@ static int bamshuf(const char *fn, int n_files, const char *pre, int clevel,
 
         // Slurp in one of the split files
         for (j = 0; j < c; ++j) {
-            if (sam_read1(fp, h, a[j].b) < 0) {
+            if (sam_read1_chunk(fp, h, a[j].b, nbchunks, chunk) < 0) {
                 fprintf(stderr, "Error reading '%s'\n", fnt[i]);
                 goto fail;
             }
@@ -530,7 +531,9 @@ static int usage(FILE *fp, int n_files, int reads_store) {
             "      -f       fast (only primary alignments)\n"
             "      -r       working reads stored (with -f) [%d]\n" // reads_store
             "      -l INT   compression level [%d]\n" // DEF_CLEVEL
-            "      -n INT   number of temporary files [%d]\n", // n_files
+            "      -n INT   number of temporary files [%d]\n"  // n_files
+            "      -k INT   the read chunk to output during CRAM conversion. In [0,N-1]. Used if N>0.\n"
+            "      -K INT   the number of read chunks to consider during CRAM conversion. 0 (default) means no chunking.\n",
             reads_store, DEF_CLEVEL, n_files);
 
     sam_global_opt_help(fp, "-....@");
@@ -575,6 +578,8 @@ char * generate_prefix() {
 int main_bamshuf(int argc, char *argv[])
 {
     int c, n_files = 64, clevel = DEF_CLEVEL, is_stdout = 0, is_un = 0, fast_coll = 0, reads_store = 10000, ret, pre_mem = 0;
+    int nbchunks = 0;
+    int chunk = 0;
     const char *output_file = NULL;
     char *prefix = NULL;
     sam_global_args ga = SAM_GLOBAL_ARGS_INIT;
@@ -583,7 +588,7 @@ int main_bamshuf(int argc, char *argv[])
         { NULL, 0, NULL, 0 }
     };
 
-    while ((c = getopt_long(argc, argv, "n:l:uOo:@:fr:", lopts, NULL)) >= 0) {
+    while ((c = getopt_long(argc, argv, "n:l:uOo:@:fr:k:K:", lopts, NULL)) >= 0) {
         switch (c) {
         case 'n': n_files = atoi(optarg); break;
         case 'l': clevel = atoi(optarg); break;
@@ -591,6 +596,8 @@ int main_bamshuf(int argc, char *argv[])
         case 'O': is_stdout = 1; break;
         case 'o': output_file = optarg; break;
         case 'f': fast_coll = 1; break;
+        case 'K': nbchunks = atoi(optarg); break;
+        case 'k': chunk = atoi(optarg); break;
         case 'r': reads_store = atoi(optarg); break;
         default:  if (parse_sam_global_opt(c, optarg, lopts, &ga) == 0) break;
                   /* else fall-through */
@@ -613,7 +620,7 @@ int main_bamshuf(int argc, char *argv[])
     if (!prefix) return EXIT_FAILURE;
 
     ret = bamshuf(argv[optind], n_files, prefix, clevel, is_stdout,
-                   output_file, fast_coll, reads_store, &ga);
+                  output_file, fast_coll, reads_store, &ga, nbchunks, chunk);
 
     if (pre_mem) free(prefix);
 
