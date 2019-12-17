@@ -300,7 +300,7 @@ static int bamshuf(const char *fn, int n_files, const char *pre, int clevel,
             goto fast_fail;
         }
 
-        while ((r = sam_read1_chunk(fp, h, list.items[list.index].b), nbchunks, chunk) >= 0) {
+        while ((r = sam_read1_chunk(fp, h, list.items[list.index].b, nbchunks, chunk)) >= 0) {
             int ret;
             bam1_t *b = list.items[list.index].b;
             int readflag = b->core.flag & (BAM_FREAD1 | BAM_FREAD2);
