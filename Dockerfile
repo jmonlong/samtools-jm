@@ -14,6 +14,7 @@ RUN apt-get update \
         less \
         nano \
         make \
+        parallel \
         libncurses5-dev libncursesw5-dev \
         zlib1g-dev libbz2-dev liblzma-dev \
         libcurl4-openssl-dev libssl-dev \
